@@ -1,0 +1,51 @@
+services:
+
+  opensearch-node:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch-node
+    restart: unless-stopped
+    environment:
+      - cluster.name=opensearch-core
+      - node.name=opensearch-node
+      - discovery.seed_hosts=opensearch-node
+      - cluster.initial_cluster_manager_nodes=opensearch-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms4g -Xmx4g
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASS}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - 127.0.0.1:9200:9200
+    security_opt:
+      - no-new-privileges:true
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: opensearch-dashboards
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:5601:5601
+    environment:
+      OPENSEARCH_HOSTS: '["https://opensearch-node:9200"]'
+    security_opt:
+      - no-new-privileges:true
+
+  vector:
+    image: timberio/vector:latest-distroless-libc
+    container_name: vector
+    restart: unless-stopped
+    environment:
+      - OPENSEARCH_SINK_PASS=${OPENSEARCH_ADMIN_PASS}
+    volumes:
+      - /opt/console/etc/vector/vector.yaml:/etc/vector/vector.yaml:ro
+    ports:
+      - 127.0.0.1:8686:8686
+      - 10514:10514/udp
+      - 10515:10515/udp
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,68 @@
+api:
+  enabled: true
+
+sources:
+  syslog_udp:
+    type: socket
+    address: 0.0.0.0:10514
+    mode: udp
+
+  dhis2_udp:
+    type: socket
+    address: 0.0.0.0:10515
+    mode: udp
+
+transforms:
+  syslog_parser:
+    type: remap
+    inputs:
+      - syslog_udp
+    drop_on_error: false
+    source: |
+      . |= parse_syslog!(.message)
+
+  syslog_message_parser:
+    type: remap
+    inputs:
+      - syslog_parser
+    drop_on_error: false
+    source: |-
+      parsed_message, err = parse_nginx_log(string!(.message), "combined") ?? parse_nginx_log(string!(.message), "error")
+      if err == null {
+        . = merge(., parsed_message)
+      }
+
+  json_parser:
+    type: remap
+    inputs:
+      - dhis2_udp
+    drop_on_error: false
+    source: |
+      .dhis2 = parse_json(del(.message)) ?? {}
+
+  nested_json_parser:
+    type: remap
+    inputs:
+      - json_parser
+    drop_on_error: false
+    source: |
+      .dhis2.audit = parse_json(.dhis2.message) ?? {}
+
+sinks:
+  opensearch:
+    type: elasticsearch
+    inputs:
+      - nested_json_parser
+      - syslog_message_parser
+    endpoints:.
+       - https://opensearch-node:9200
+    suppress_type_name: true
+    mode: bulk
+    auth:
+      strategy: basic
+      user: "${OPENSEARCH_SINK_USER:-admin}"
+      password: "${OPENSEARCH_SINK_PASS}"
+    tls:.
+      verify_certificate: false
+      verify_hostname: false
+    healthcheck: false
